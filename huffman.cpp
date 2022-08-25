@@ -122,7 +122,7 @@ int main()
         }
     }
 
-    Node *test = pq.top();
+    //Node *test = pq.top();
    // cout<<"TEst"<<test->ch<<test->freq<<endl;
 
     //Make binary Tree
