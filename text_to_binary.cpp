@@ -6,7 +6,8 @@ using namespace std;
 int main()
 
 {
-    ifstream f("output.txt");
+
+    ifstream f("test.txt");
     fstream f2("binary.bin", ios::binary | ios::out);
 
     if(!f2.is_open()) cout<<"Binary not open";
@@ -22,7 +23,11 @@ int main()
 
     fstream file("binary.bin",ios::binary| ios ::in);
     string out;
-    file.read((char*)&out,sizeof(string));
+    while(1){
+        file.read((char*)&out,sizeof(string));
 
+        if(!file.good()) break;
+        cout<<out;
+    }
     file.close();
 }
