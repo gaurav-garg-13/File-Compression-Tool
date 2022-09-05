@@ -3,6 +3,7 @@
 #include<iostream>
 #include<fstream>
 #include<string>
+#include<bitset>
 using namespace std;
 typedef pair<int, int> pi;
 
@@ -24,25 +25,64 @@ public:
         freq = 0;
     }
 };
+
 // defined to make Min priority queue for Node class
 struct CompareNode
 {
     bool operator()(Node* const &lhs,Node* const &rhs)
     {
-        return lhs->freq>rhs->freq && lhs->ch<rhs->ch;
+        return lhs->freq>rhs->freq;
     }
 };
 
 
 
-// Class for encapsulating Huffman process
+// Class for encapsulating Huffman Coding process
 class Huffman
 {
     int arr[256]; // to store frequency of characters
 
+    string fileName; //to store name of File to compress
 
+     //Hash map that stores character as key and code as value for compression
+    unordered_map<char,string> ch_to_code;
 
-     //priority queue to help make binary tree
+    //Hash map that stores character as value and code as key for decompression
+    unordered_map<string,char> code_to_ch;
+
+public:
+    //Constructor that initializes character counter to 0 and file name
+    Huffman(string f_name)
+    {
+        this->fileName = f_name;
+        for(int i=0;i<256;i++) arr[i] = 0;
+    }
+
+private:
+
+    // taking a string as an input and counting frequency of each character.
+    vector<char> counter()
+    {
+        ifstream input_file(this->fileName);
+        vector<char> full_text ;
+
+        if(input_file.is_open()){
+            string line;
+            while(getline(input_file,line)){
+                for(int i=0;i<line.length();i++){
+                    arr[line[i]]++;
+                    full_text.push_back(line[i]);
+                }
+                arr[10]++; // adding \n value
+                full_text.push_back('\n');
+            }
+        }
+        input_file.close();
+        return full_text;
+
+    }
+
+    //Function to make priority queue to help make binary tree
     priority_queue<Node*,vector<Node*>,CompareNode> make_queue()
     {
         priority_queue<Node*,vector<Node*>,CompareNode> pq;
@@ -84,166 +124,249 @@ class Huffman
 
 
     // Functions to generate codes from the given tree
-    void helper(Node *root,string str,unordered_map<char,string> &my_map)
+    void helper(Node *root,string str)
     {
         if(!root)
             return;
 
         if(root->ch!='\0'){
-            my_map[root->ch] = str;
+            this->ch_to_code[root->ch] = str;
         }
 
-        helper(root->left,str+"0",my_map);
-        helper(root->right,str+"1",my_map);
+        helper(root->left,str+"0");
+        helper(root->right,str+"1");
     }
-
-public:
-    Huffman()
-    {
-        for(int i=0;i<256;i++) arr[i] = 0;
-    }
-
-    // taking a string as an input and counting frequency of each character.
-    void counter(string line)
-    {
-        for(int i=0;i<line.length();i++)
-            arr[line[i]]++;
-    }
-
 
     // Functions to generate codes from the given tree
-    unordered_map<char,string> generate_codes()
+    void generate_codes()
     {
         priority_queue<Node*,vector<Node*>,CompareNode> pq = make_queue();
 
         Node *root = create_tree(pq);
 
-        unordered_map<char,string> my_map;
-        string str = "";
-        helper(root,str,my_map);
-        return my_map;
+        helper(root,"");
+
+        for(auto i=this->ch_to_code.begin();i!=this->ch_to_code.end();i++){
+            this->code_to_ch[i->second] = i->first;
+        }
+    }
+
+
+    //Generate Encoded text
+    vector<char> get_encoded_text(vector<char> &full_text)
+    {
+        vector<char> en_text;
+        for(int i=0;i<full_text.size();i++){
+            string temp = ch_to_code[full_text[i]];
+
+            for(int j=0;j<temp.length();j++)
+                en_text.push_back(temp[j]);
+        }
+        return en_text;
+    }
+
+
+    // Padding the Encoded String
+    vector<char> padding(vector<char> text)
+    {
+
+        int num = text.size();
+        unsigned int pad_value = 32-(num%32);
+
+        for(int i=0;i<pad_value;i++){
+            text.push_back('0');
+        }
+
+
+        string pad_info = bitset<32>(pad_value).to_string();
+
+        for(int i=pad_info.length()-1;i>=0;i--){
+            text.insert(text.begin(),pad_info[i]);
+        }
+
+        return text;
+
+    }
+
+
+    //Function to build byte array from padded text
+    vector<unsigned int> build_byte_array(vector<char> padded_text)
+    {
+        vector<unsigned int> byte_arr;
+
+        for(int i=0;i<padded_text.size();i+=32)
+        {
+            string byte="";
+            for(int j=i;j<i+32;j++){
+                byte += padded_text[j];
+            }
+            unsigned int b = stoul(byte,nullptr,2);
+
+            byte_arr.push_back(b);
+        }
+
+        return byte_arr;
+    }
+
+
+    vector<char> get_padded_from_byte_array(vector<unsigned int> &byte_arr)
+    {
+        vector<char> padded_text;
+
+        for(int i=0;i<byte_arr.size();i++)
+        {
+            string byte_value = bitset<32>(byte_arr[i]).to_string();
+            for(int j=0;j<byte_value.size();j++){
+                padded_text.push_back(byte_value[j]);
+            }
+        }
+
+        return padded_text;
+    }
+
+    vector<char> remove_padding(vector<char> padded_text)
+    {
+        string num="";
+        for(int i=0;i<32;i++){
+            num+=padded_text[0];
+            padded_text.erase(padded_text.begin());
+        }
+
+        unsigned int n = stoul(num,nullptr,2);
+
+        for(int i=0;i<n;i++){
+            padded_text.pop_back();
+        }
+
+        return padded_text;
+
+    }
+
+public:
+
+    void compress()
+    {
+        //Counting frequency of characters
+        vector<char> full_text = counter();
+
+        //Generating codes
+        generate_codes();
+
+        //Generating the encoded string
+        vector<char> encoded_text;
+        encoded_text = get_encoded_text(full_text);
+
+        //Padding of Encoded string
+        vector<char> padded_text = padding(encoded_text);
+
+        //Getting byte array for writing bytes to file
+        vector<unsigned int> byte_array = build_byte_array(padded_text);
+
+        //Writing the generated array to file
+        ofstream output;
+        output.open("Compressed.bin",ios::binary|ios::out);
+
+        if(output.is_open()){
+            for(int i=0;i<byte_array.size();i++){
+                unsigned int temp = byte_array[i];
+                output.write(reinterpret_cast<char*>(&temp),sizeof(temp));
+            }
+            output.close();
+        }
+
+        cout<<fileName<<" is successfully compressed."<<endl;
+    }
+
+
+
+    void decompress(string file_name)
+    {
+        //Reading from compressed file
+        ifstream c_file(file_name,ios::binary|ios::in);
+        vector<unsigned int> byte_arr;
+
+        while(1)
+        {
+            unsigned int a;
+            c_file.read((char*)&a,sizeof(a));
+            if(!c_file.good()) break;
+            byte_arr.push_back(a);
+        }
+        c_file.close();
+
+        vector<char> padded_text = get_padded_from_byte_array(byte_arr);
+
+
+        vector<char> encoded_text = remove_padding(padded_text);
+
+
+        vector<char> text;
+
+        for(auto i:ch_to_code){
+            code_to_ch[i.second] = i.first;
+        }
+
+        string temp = "";
+        for(int i=0;i<encoded_text.size();i++){
+            temp+=encoded_text[i];
+            if(code_to_ch[temp]!=0){
+                text.push_back(code_to_ch[temp]);
+                temp = "";
+
+            }
+        }
+
+        ofstream r_file("Retrieved.txt");
+
+        for(int i=0;i<text.size();i++){
+            r_file<<text[i];
+        }
+
+        r_file.close();
+        cout<<"Successfully decompressed."<<endl;
+
+
+
+
+
+
+
+        /*
+        string line;
+        while(getline(c_file,line)){
+            code+=line;
+        }
+        c_file.close();
+
+        ofstream ret_file("ret.txt");
+        string temp="";
+        for(int i=0;i<code.length();i++)
+        {
+            temp+=code[i];
+            if(code_to_ch[temp]!=0){
+                ret_file<<code_to_ch[temp];
+                temp = "";
+            }
+        }
+
+        ret_file.close();
+
+        cout<<"Decompressed"<<endl;
+
+
+        */
+
     }
 };
 
 
 int main()
 {
-    ifstream test_file;
-    test_file.open("test.txt");
-
-    Huffman huff_test;
-
-    if(test_file.is_open()){
-        string line;
-        while(getline(test_file,line)){
-            huff_test.counter(line);
-        }
-    }
-    test_file.close();
-
-    unordered_map<char,string> test_codes = huff_test.generate_codes();
 
 
-
-    ofstream output_file("output.txt");
-
-    test_file.open("test.txt");
-    if(test_file.is_open()){
-        string line;
-        while(getline(test_file,line)){
-            string output="";
-            cout<<line;
-            for(int i=0;i<line.length();i++){
-                output+=test_codes[line[i]];
-                //cout<<output;
-            }
-            output_file<<output;
-            output_file<<"\n";
-
-        }
-    }
-
-    test_file.close();
-    output_file.close();
-
-
-
-
-    /*
-    unordered_map<string,char> code_to_ch;
-
-    for(auto i=test_codes.begin();i!=test_codes.end();i++){
-        code_to_ch[i->second] = i->first;
-    }
-
-    test_file.open("output.txt");
-    ofstream ret("Retrieve.txt");
-
-    if(test_file.is_open()){
-        string line;
-        while(getline(test_file,line)){
-            string temp="";
-
-            for(int i=0;i<=line.length();i++){
-                if(code_to_ch[temp]!=0){
-                    ret<<code_to_ch[temp];
-                    temp="";
-                }
-
-                temp+=line[i];
-            }
-
-            ret<<"\n";
-        }
-    }
-
-    test_file.close();
-    ret.close();
-
-
-    */
-
-
-
-
-
-
-
-    /*
-    string line;
-    line = "This is test for huffman coding.";
-
-
-
-    Huffman test;
-    test.counter(line);
-    unordered_map<char,string> test_codes = test.generate_codes();
-
-    string output="";
-    for(int i=0;i<line.length();i++){
-        output+=test_codes[line[i]];
-    }
-
-    cout<<output<<endl;
-
-    unordered_map<string,char> code_to_ch;
-
-    for(auto i=test_codes.begin();i!=test_codes.end();i++){
-        code_to_ch[i->second] = i->first;
-    }
-    string temp="";
-    for(int i=0;i<=output.length();i++){
-        if(code_to_ch[temp]!=0){
-            cout<<code_to_ch[temp];
-            temp="";
-        }
-
-        temp+=output[i];
-    }
-    */
-
-
-
+    Huffman h("test.txt");
+    h.compress();
+    h.decompress("Compressed.bin");
 }
 
 

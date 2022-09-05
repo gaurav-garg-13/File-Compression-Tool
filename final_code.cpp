@@ -30,7 +30,7 @@ struct CompareNode
 {
     bool operator()(Node* const &lhs,Node* const &rhs)
     {
-        return lhs->freq>rhs->freq && lhs->ch<rhs->ch;
+        return lhs->freq>rhs->freq;
     }
 };
 
@@ -40,8 +40,31 @@ struct CompareNode
 class Huffman
 {
     int arr[256]; // to store frequency of characters
-    unordered_map<char,string> ch_to_code; //Hash map that stores character as key and code as value
-    unordered_map<string,char> code_to_ch; //Hash map that stores character as value and code as key
+    unordered_map<char,string> ch_to_code; //Hash map that stores character as key and code as value for compression
+    unordered_map<string,char> code_to_ch; //Hash map that stores character as value and code as key for decompression
+
+
+    // taking a string as an input and counting frequency of each character.
+    vector<char> counter(string file_name)
+    {
+        ifstream input_file(file_name);
+        vector<char> full_text ;
+
+        if(input_file.is_open()){
+            string line;
+            while(getline(input_file,line)){
+                for(int i=0;i<line.length();i++){
+                    arr[line[i]]++;
+                    full_text.push_back(line[i]);
+                }
+                arr[10]++; // adding \n value
+                full_text.push_back((char)10);
+            }
+            input_file.close();
+        }
+        return full_text;
+
+    }
 
      //priority queue to help make binary tree
     priority_queue<Node*,vector<Node*>,CompareNode> make_queue()
@@ -58,6 +81,7 @@ class Huffman
 
         return pq;
     }
+
 
     //Function to create a binary tree of type Node from the given priority queue
     Node* create_tree(priority_queue<Node*,vector<Node*>,CompareNode> &pq)
@@ -113,41 +137,20 @@ class Huffman
         }
     }
 
-
-    // taking a string as an input and counting frequency of each character.
-    vector<char> counter(string file_name)
-    {
-        ifstream input_file(file_name);
-        vector<char> full_text ;
-
-        if(input_file.is_open()){
-            string line;
-            while(getline(input_file,line)){
-                for(int i=0;i<line.length();i++){
-                    arr[line[i]]++;
-                    full_text.push_back(line[i]);
-                }
-                arr[10]++; // adding \n value
-                full_text.push_back('\n');
-            }
-        }
-        input_file.close();
-        return full_text;
-
-    }
-
     vector<char> padding(vector<char> text)
     {
+
         int num = text.size();
         unsigned int pad_value = 32-(num%32);
-
-
 
         for(int i=0;i<pad_value;i++){
             text.push_back('0');
         }
+
+
         string pad_info = bitset<32>(pad_value).to_string();
-        for(int i=0;i<pad_info.length();i++){
+
+        for(int i=pad_info.length()-1;i>=0;i--){
             text.insert(text.begin(),pad_info[i]);
         }
 
@@ -159,6 +162,7 @@ class Huffman
     vector<unsigned int> build_byte_array(vector<char> padded_text)
     {
         vector<unsigned int> byte_arr;
+        cout<<padded_text.size()<<endl;
 
         for(int i=0;i<padded_text.size();i+=32)
         {
@@ -166,7 +170,7 @@ class Huffman
             for(int j=i;j<i+32;j++){
                 byte += padded_text[j];
             }
-            unsigned int b = stoul(byte,nullptr,2);
+            unsigned int b = stoul(byte,nullptr,2);//static_cast<char>(stoul(byte)+64);
             //cout<<b<<":"<<byte<<endl;
 
             byte_arr.push_back(b);
@@ -182,8 +186,31 @@ class Huffman
 
         for(int i=0;i<byte_arr.size();i++)
         {
-
+            string byte_value = bitset<32>(byte_arr[i]).to_string();
+            for(int j=0;j<byte_value.size();j++){
+                padded_text.push_back(byte_value[j]);
+            }
         }
+
+        return padded_text;
+    }
+
+    vector<char> remove_padding(vector<char> padded_text)
+    {
+        string num="";
+        for(int i=0;i<32;i++){
+            num+=padded_text[0];
+            padded_text.erase(padded_text.begin());
+        }
+
+        unsigned int n = stoul(num,nullptr,2);
+
+        for(int i=0;i<n;i++){
+            padded_text.pop_back();
+        }
+
+        return padded_text;
+
     }
 
 public:
@@ -201,6 +228,7 @@ public:
 
         vector<char> encoded_text;
 
+
         for(int i=0;i<full_text.size();i++){
             string temp = ch_to_code[full_text[i]];
 
@@ -208,24 +236,46 @@ public:
                 encoded_text.push_back(temp[j]);
         }
 
+
         //Padding of Encoded text
         vector<char> padded_text = padding(encoded_text);
 
+        //for(int i=0;i<64;i++) {cout<<padded_text[i]; if(i==31) cout<<endl;}
+        //cout<<endl;
+
         vector<unsigned int> byte_array = build_byte_array(padded_text);
 
+      //  for(int i=0;i<10 && i<byte_array.size();i++) cout<<byte_array[i]<<" ";
+      // cout<<endl;
+
+        cout<<byte_array.size()<<endl;
 
 
+        fstream output;
+        output.open("compressed.bin",ios::binary|ios::out);
 
-        ofstream output("compressed.bin",ios::binary);
-        for(int i=0;i<byte_array.size();i++){
-            unsigned int a = byte_array[i];
-            char bytes = (char)a;
-            output.write((char*)&bytes,sizeof(bytes));
+        if(output.is_open()){
+            for(int i=0;i<byte_array.size();i++){
+                unsigned int temp = byte_array[i];
+                output.write(reinterpret_cast<char*>(&temp),sizeof(temp));
+            }
+            output.close();
         }
 
-        output.close();
+        else
+            cout<<"Can't write";
+
 
         cout<<file_name<<" is successfully compressed."<<endl;
+
+        for(int i=0;i<256;i++){
+            if(arr[i]!=0)
+                cout<<"Character : "<<(char)i<<" *** Frequency: "<<arr[i]<<endl;
+        }
+
+        for(auto i:ch_to_code){
+            cout<<"Character: "<<i.first<<" *** Code: "<<i.second<<endl;
+        }
     }
 
 
@@ -233,18 +283,52 @@ public:
     void decompress(string file_name)
     {
         ifstream c_file(file_name,ios::binary);
-        char data;
-
         vector<unsigned int> byte_arr;
+
         while(1)
         {
-            c_file.read((char*)&data,sizeof(char));
+            unsigned int a;
+            //unsigned char data;
+            c_file.read((char*)&a,sizeof(a));
             if(!c_file.good()) break;
-            unsigned int a = (unsigned int)data;
+            //a = (unsigned int)data;
             byte_arr.push_back(a);
-
-            vector<char> padded_text = get_padded_from_byte_array(byte_arr);
         }
+        c_file.close();
+
+        cout<<byte_arr.size()<<endl;
+
+        //for(int i=0;i<10 && i<byte_arr.size();i++) cout<<byte_arr[i]<<" ";
+        //cout<<endl;
+
+        vector<char> padded_text = get_padded_from_byte_array(byte_arr);
+
+
+        vector<char> encoded_text = remove_padding(padded_text);
+
+
+        vector<char> text;
+
+        string temp = "";
+        for(int i=0;i<encoded_text.size();i++){
+            temp+=encoded_text[i];
+            if(code_to_ch[temp]!=0){
+                text.push_back(code_to_ch[temp]);
+                temp = "";
+
+            }
+        }
+
+        ofstream r_file("Retrieved.txt");
+
+        for(int i=0;i<text.size();i++){
+            r_file<<text[i];
+        }
+
+        r_file.close();
+        cout<<"Successfully decompressed."<<endl;
+
+
 
 
 
@@ -285,7 +369,7 @@ int main()
 
     Huffman h;
     h.compress("test.txt");
-    //h.decompress("compressed.bin");
+    h.decompress("compressed.bin");
 
 
 
